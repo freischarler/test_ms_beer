@@ -1,0 +1,66 @@
+version: "3.3"
+
+services:
+  app:
+    build:
+      context: . #current directory
+      dockerfile: Dockerfile #use the dockerfile called Dockerfile
+    ports:
+      - "9000:9000" #forward port from my app to the OS
+    environment:
+      PGHOST: "database"
+      PGPORT: 5432
+      PGUSER: "postgres"
+      PGPASSWORD: "root"
+      PGDBNAME: "postgres"      
+    restart: on-failure
+    volumes:
+      - api:/usr/src/app/
+    depends_on:
+      - database          # Uncomment this when using postgres.
+    links:
+      - database
+    networks:
+      - backend
+
+  database:
+    image: postgres:latest
+    container_name: golang-docker-db
+    restart: always
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=root
+      - POSTGRES_DB=golang-docker
+    ports:
+      - '5432:5432'
+    volumes:
+      - database_postgres:/var/lib/postgresql/data
+    networks:
+      - backend # network to communicate containers with each other
+
+  pgadmin:
+    image: dpage/pgadmin4
+    container_name: pgadmin_container
+    environment:
+      - PGADMIN_DEFAULT_EMAIL=live@admin.com
+      - PGADMIN_DEFAULT_PASSWORD=password
+    depends_on:
+      - database
+    ports:
+      - "5050:80"
+    restart: unless-stopped
+    networks:
+      - backend # network to communicate containers with each other
+
+volumes:
+  api:
+  database_postgres:                  # Uncomment this when using postgres.
+
+  # Networks to be created to facilitate communication between containers
+networks:
+    backend:
+
+# docker-compose up -d --build          
+# docker-compose down
+
+
