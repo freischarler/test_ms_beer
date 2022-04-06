@@ -13,6 +13,7 @@ services:
       PGUSER: "postgres"
       PGPASSWORD: "root"
       PGDBNAME: "postgres"      
+      CURRENCY_LAYER_KEY: "6cfc37af1bbaca50b98c06c8d142c809"
     restart: on-failure
     volumes:
       - api:/usr/src/app/
