@@ -1,6 +1,6 @@
 # Backend - Beers
 
-## Introducción (Problema)
+## Introducción 
 Bender es fanático de las cervezas, y quiere tener un registro de todas las cervezas que prueba y cómo calcular el precio que necesita para comprar una caja de algún tipo especifico de cervezas. Para esto necesita una API REST con esta información que posteriormente compartir con sus amigos. 
 
 ## Requisitos
