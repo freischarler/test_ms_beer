@@ -13,20 +13,22 @@ import (
 
 	// registering database driver
 	_ "github.com/lib/pq"
+
+	errorsCode "github.com/freischarler/hexpattern/internal"
 )
 
 type BeerRepositoryDb struct {
 	client *sql.DB
 }
 
-func (d BeerRepositoryDb) GetAll() ([]Beer, int) {
+func (d BeerRepositoryDb) GetAll() ([]Beer, error) {
 	findAllSql := "SELECT beer_id, name, brewery, country, price, currency FROM beers"
 	beers := make([]Beer, 0)
 
 	rows, err := d.client.Query(findAllSql)
 	if err != nil {
 		log.Print("Error while querying customer table" + err.Error())
-		return beers, 400
+		return beers, errorsCode.BadRequest
 	}
 
 	for rows.Next() {
@@ -35,25 +37,25 @@ func (d BeerRepositoryDb) GetAll() ([]Beer, int) {
 
 		if err != nil {
 			log.Print("Error while scanning beer" + err.Error())
-			return beers, 400
+			return beers, errorsCode.BadRequest
 		}
 		beers = append(beers, c)
 	}
-	return beers, 200
+	return beers, nil
 }
 
-func (d BeerRepositoryDb) PostOne(b Beer) int {
+func (d BeerRepositoryDb) PostOne(b Beer) error {
 	sqlInsert := "INSERT INTO beers (beer_id, name, brewery, country, price, currency) VALUES ($1,$2,$3,$4,$5,$6)"
 
 	_, error := d.client.Exec(sqlInsert, b.Id, b.Name, b.Brewery, b.Country, b.Price, b.Currency)
 	if error != nil {
 		//err.Error("El ID de la cerveza ya existe")
-		return 409
+		return errorsCode.ID
 	}
-	return 201
+	return nil
 }
 
-func (d BeerRepositoryDb) GetOneByID(id string) (Beer, int) {
+func (d BeerRepositoryDb) GetOneByID(id string) (Beer, error) {
 	beerSql := "SELECT beer_id, name, brewery, country, price, currency FROM beers WHERE beer_id = $1"
 	log.Println(beerSql)
 	var beer Beer
@@ -66,27 +68,27 @@ func (d BeerRepositoryDb) GetOneByID(id string) (Beer, int) {
 
 	err = d.client.QueryRow(beerSql, &beer_id).Scan(&beer.Id, &beer.Name, &beer.Brewery, &beer.Country, &beer.Price, &beer.Currency)
 	if err != nil {
-		return beer, 404
+		return beer, errorsCode.ID
 	}
-	return beer, 200
+	return beer, nil
 }
 
-func (d BeerRepositoryDb) GetBoxPrice(id string, currency string, count int) (float64, int) {
+func (d BeerRepositoryDb) GetBoxPrice(id string, currency string, count int) (float64, error) {
 	var beer Beer
 
 	beer, err := d.GetOneByID(id)
-	if err != 200 {
-		return 0, 404
+	if err != nil {
+		return 0, errorsCode.ID
 	}
 
-	factor, err := GetPrice(beer.Currency, currency)
-	if err != 200 {
-		log.Fatal(err)
+	factor, err := getPrice(beer.Currency, currency)
+	if err != nil {
+		return 0, errorsCode.BadRequest
 	}
 
 	price := beer.Price * float64(count) * factor
 	fmt.Println(price)
-	return price, 200
+	return price, nil
 }
 
 func NewBeerRepositoryDb() BeerRepositoryDb {
@@ -133,7 +135,7 @@ type Data struct {
 	DBName   string `json:"pgDBname"`
 }
 
-func GetPrice(currency_source string, currency_destiny string) (float64, int) {
+func getPrice(currency_source string, currency_destiny string) (float64, error) {
 	currencyApiKey := os.Getenv("CURRENCY_LAYER_KEY")
 	if currencyApiKey == "" {
 		log.Fatal("Error: Can't get CURRENCY ENV")
@@ -147,13 +149,15 @@ func GetPrice(currency_source string, currency_destiny string) (float64, int) {
 
 	r, err := http.Get("http://api.currencylayer.com/live?access_key=" + currencyApiKey)
 	if err != nil {
-		return 0, 404
+		return 0, errorsCode.NotFound
 	}
 
 	var d interface{}
 	if err := json.NewDecoder(r.Body).Decode(&d); err != nil {
-		return 0, 404
+		return 0, errorsCode.Decode
 	}
+
+	defer recoverWeb()
 
 	factor1 := (d.(map[string]interface{})["quotes"].(map[string]interface{})[("USD" + currency_source)]).(float64)
 
@@ -161,5 +165,11 @@ func GetPrice(currency_source string, currency_destiny string) (float64, int) {
 
 	value := 1 / factor1 * factor2
 
-	return value, 200
+	return value, nil
+}
+
+func recoverWeb() {
+	if r := recover(); r != nil {
+		fmt.Println("recovered from bad currency request", r)
+	}
 }

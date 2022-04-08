@@ -2,6 +2,7 @@ package app
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -10,6 +11,8 @@ import (
 	"github.com/freischarler/hexpattern/domain"
 	"github.com/freischarler/hexpattern/service"
 	"github.com/gorilla/mux"
+
+	errorsCode "github.com/freischarler/hexpattern/internal"
 )
 
 type BeerHandlers struct {
@@ -26,84 +29,89 @@ type Beer struct {
 }
 
 func (ch *BeerHandlers) getAllBeers(w http.ResponseWriter, r *http.Request) {
-	beers, result := ch.service.GetAllBeer()
+	beers, err := ch.service.GetAllBeer()
+	var jsonResp []byte
 
-	if result == 200 {
-		w.Header().Add("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		jsonResp, err := json.Marshal(beers)
+	if err != nil {
+		w.WriteHeader(http.StatusNotFound)
+		resp := make(map[string]string)
+		resp["description"] = "Problema al acceder a la BD"
+		jsonResp, err = json.Marshal(resp)
 		if err != nil {
 			log.Fatalf("Error happened in JSON marshal. Err: %s", err)
 		}
-		w.Write(jsonResp)
+	} else {
+		w.Header().Add("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		jsonResp, err = json.Marshal(beers)
+		if err != nil {
+			log.Fatalf("Error happened in JSON marshal. Err: %s", err)
+		}
 	}
+	w.Write(jsonResp)
 }
 
 func (ch *BeerHandlers) postBeer(w http.ResponseWriter, r *http.Request) {
 	var b domain.Beer
-	var result int
+	var jsonResp []byte
 
 	err := json.NewDecoder(r.Body).Decode(&b)
 	if err != nil {
-		result = 400
-	} else {
-		log.Println(b)
-		result = ch.service.PostOneBeer(b)
-	}
-
-	if result == 201 {
 		w.Header().Add("Content-Type", "application/json")
-		w.WriteHeader(http.StatusCreated)
-		resp := make(map[string]string)
-		resp["description"] = "Cerveza creada"
-		jsonResp, err := json.Marshal(resp)
-		if err != nil {
-			log.Fatalf("Error happened in JSON marshal. Err: %s", err)
-		}
-		w.Write(jsonResp)
-	} else if result == 409 {
-		w.WriteHeader(http.StatusConflict)
-		resp := make(map[string]string)
-		resp["description"] = "El ID de la cerveza ya existe"
-		jsonResp, err := json.Marshal(resp)
-		if err != nil {
-			log.Fatalf("Error happened in JSON marshal. Err: %s", err)
-		}
-		w.Write(jsonResp)
-	} else {
 		w.WriteHeader(http.StatusBadRequest)
 		resp := make(map[string]string)
 		resp["description"] = "Request invalida"
-		jsonResp, err := json.Marshal(resp)
+		jsonResp, err = json.Marshal(resp)
 		if err != nil {
 			log.Fatalf("Error happened in JSON marshal. Err: %s", err)
 		}
-		w.Write(jsonResp)
+	} else {
+		err := ch.service.PostOneBeer(b)
+		if err == nil {
+			w.Header().Add("Content-Type", "application/json")
+			w.WriteHeader(http.StatusCreated)
+			resp := make(map[string]string)
+			resp["description"] = "Cerveza creada"
+			jsonResp, err = json.Marshal(resp)
+			if err != nil {
+				log.Fatalf("Error happened in JSON marshal. Err: %s", err)
+			}
+
+		} else if errors.Is(err, errorsCode.ID) {
+			w.WriteHeader(http.StatusConflict)
+			resp := make(map[string]string)
+			resp["description"] = "El ID de la cerveza ya existe"
+			jsonResp, err = json.Marshal(resp)
+			if err != nil {
+				log.Fatalf("Error happened in JSON marshal. Err: %s", err)
+			}
+		}
 	}
+	w.Write(jsonResp)
 }
 
 func (ch *BeerHandlers) getOneBeer(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
-	beer, result := ch.service.GetOneByIdBeer(vars["beer_id"])
+	var jsonResp []byte
 
-	if result == 200 {
-		w.Header().Add("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		jsonResp, err := json.Marshal(beer)
-		if err != nil {
-			log.Fatalf("Error happened in JSON marshal. Err: %s", err)
-		}
-		w.Write(jsonResp)
-	} else if result == 404 {
+	beer, err := ch.service.GetOneByIdBeer(vars["beer_id"])
+	if err != nil {
 		w.WriteHeader(http.StatusNotFound)
 		resp := make(map[string]string)
 		resp["description"] = "El Id de la cerveza no existe"
-		jsonResp, err := json.Marshal(resp)
+		jsonResp, err = json.Marshal(resp)
 		if err != nil {
 			log.Fatalf("Error happened in JSON marshal. Err: %s", err)
 		}
-		w.Write(jsonResp)
+	} else {
+		w.Header().Add("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		jsonResp, err = json.Marshal(beer)
+		if err != nil {
+			log.Fatalf("Error happened in JSON marshal. Err: %s", err)
+		}
 	}
+	w.Write(jsonResp)
 }
 
 func (ch *BeerHandlers) getBoxBeer(w http.ResponseWriter, r *http.Request) {
@@ -128,19 +136,21 @@ func (ch *BeerHandlers) getBoxBeer(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(nil)
 	}
 
-	price, result := ch.service.GetBoxBeer(vars["beer_id"], currency, count)
-	if result == 200 {
-		w.Header().Add("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode(map[string]float64{"Price Total": price})
-	} else if result == 404 {
+	var jsonResp []byte
+
+	price, err := ch.service.GetBoxBeer(vars["beer_id"], currency, count)
+	if err != nil {
 		w.WriteHeader(http.StatusNotFound)
 		resp := make(map[string]string)
 		resp["description"] = "El Id de la cerveza no existe"
-		jsonResp, err := json.Marshal(resp)
+		jsonResp, err = json.Marshal(resp)
 		if err != nil {
 			log.Fatalf("Error happened in JSON marshal. Err: %s", err)
 		}
-		w.Write(jsonResp)
+	} else {
+		w.Header().Add("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		json.NewEncoder(w).Encode(map[string]float64{"Price Total": price})
 	}
+	w.Write(jsonResp)
 }

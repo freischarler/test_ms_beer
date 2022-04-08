@@ -14,8 +14,8 @@ type BeerBox struct {
 }
 
 type BeerRepository interface {
-	GetAll() ([]Beer, int)
-	PostOne(Beer) int
-	GetOneByID(string) (Beer, int)
-	GetBoxPrice(string, string, int) (float64, int)
+	GetAll() ([]Beer, error)
+	PostOne(Beer) error
+	GetOneByID(string) (Beer, error)
+	GetBoxPrice(string, string, int) (float64, error)
 }
